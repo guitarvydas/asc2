@@ -5,7 +5,7 @@
 ;; fifo front is (first q)
 ;; append is to end of q (last q) (fifo end)
 ;; (using symbol macros to avoid creating defsetfs)
-(defmacro name-field (x) `(first ,x))
+(defmacro port-field (x) `(first ,x))
 (defmacro handler-field (x) `(second ,x))
 (defmacro inq-field (x) `(third ,x))
 (defmacro outq-field (x) `(fourth ,x))
@@ -18,9 +18,10 @@
 	named-q
 	(find-component-descriptor target-name (cdr queues))))))
 
-(defun send (component data queues)
-  (let ((named-queue (find-component-descriptor component queues)))
-    (append-data-to-output-queue named-queue data)))
+(defun send (port data queues)
+  (let ((component (first port)))
+    (let ((named-queue (find-component-descriptor component queues)))
+      (append-data-to-output-queue named-queue (list port data)))))
 
 
 (defun dequeue-input-message (named-q)
@@ -29,11 +30,11 @@
         (pop (inq-field named-q))
       nil)))
 
-(defun append-data-to-output-queue (named-q data)
+(defun append-data-to-output-queue (named-q event)
   (setf (outq-field named-q)
         (if (null (outq-field named-q))
-            (list data)
-          (append (outq-field named-q) (list data)))))
+            (list event)
+          (append (outq-field named-q) (list event)))))
 
 (defun enqueue-input-message (message receiver-descriptor)
   ;; input queue is (inq-field receiver-descriptor)
@@ -46,17 +47,22 @@
 (defun find-from (from table)
   (assert (not (null table))) ;; internal error - routing not fully specified
   (let ((routing-descriptor (first table)))
-    (let ((to (name-field routing-descriptor)))
+    (let ((to (first (port-field routing-descriptor))))
       (if (eq from to)
           routing-descriptor
         (find-from from (cdr table))))))
+
+(defun copy-message-and-change-pin (message new-pin)
+  (let ((data (second message)))
+    (list new-pin data)))
 
 (defun route-message (message receivers named-queues)
   (if (null receivers)
       nil
       (let ((receiver (first receivers)))
 	(let ((receiver-descriptor (find-component-descriptor receiver named-queues)))
-	  (enqueue-input-message message receiver-descriptor)
+	  (let ((message-copy (copy-message-and-change-pin message :in)))
+	    (enqueue-input-message message-copy receiver-descriptor))
           (route-message message (cdr receivers) named-queues)))))
 
 (defun route-message-to-all-receivers (from message table named-queues)
@@ -110,98 +116,28 @@
       (let ((conclude-predicate (lambda () conclude)))
         (flet ((not-concluded () (setf conclude nil))
                (concluded () (setf conclude t)))
-          (let ((hello (lambda (message) (declare (ignore message))
-                         (format *standard-output* "hello~%")
-                         (send 'hello t named-queues)))
-                (world (lambda (message) (declare (ignore message))
-                         (format *standard-output* "world~%")
-                         (concluded))))
+          (let ((hello (lambda (message)
+			 (ecase (first message)
+			   (:in
+                            (format *standard-output* "hello~%")
+                            (send '(hello :out) t named-queues)))))
+                (world (lambda (message)
+			 (ecase (first message)
+			   (:in
+                            (format *standard-output* "world~%")
+                            (concluded))))))
             (let ((routing-table
                    (list ;; { sender (receivers) } 
-                       (list :self (list 'hello))
-                       (list 'hello (list 'world)))))
+                       (list '(:self :out) (list 'hello))
+                       (list '(hello :out) (list 'world)))))
               
               (setf named-queues (list ;; { name inq outq }
                                        (list :self self-handler nil nil)
                                        (list 'hello hello nil nil)
                                        (list 'world world nil nil)))
               (not-concluded)
-              (send :self t named-queues)
+              (send '(:self :out) t named-queues)
               (route-messages routing-table named-queues)
               (dispatch named-queues routing-table conclude-predicate)
               'done)))))))
 
-(defun helloworld2 ()
-  (let (named-queues
-	conclude
-        counter)
-    (let ((self-handler (lambda (message) (default-container-handler message named-queues))))
-      (let ((conclude-predicate (lambda () conclude)))
-        (flet ((not-concluded () (setf conclude nil))
-               (concluded () (setf conclude t)))
-          (let ((hello (lambda (message) (declare (ignore message))
-                         (format *standard-output* "hello~%")
-                         (send 'hello t named-queues)))
-                (hellob (lambda (message) (declare (ignore message))
-                         (format *standard-output* "hellob~%")
-                         (send 'hello t named-queues)))
-                (world (lambda (message) (declare (ignore message))
-                         (format *standard-output* "world ~a~%" counter)
-                         (decf counter)
-                         (when (<= counter 0)
-                             (concluded)))))
-            (let ((routing-table
-                   (list ;; { sender (receivers) } 
-                       (list :self (list 'hello 'hellob))
-                       (list 'hello (list 'world))
-                       (list 'hellob (list 'world)))))
-              
-              (setf named-queues (list ;; { name inq outq }
-                                       (list :self self-handler nil nil)
-                                       (list 'hello hello nil nil)
-                                       (list 'hellob hello nil nil)
-                                       (list 'world world nil nil)))
-              (setf counter 2)
-              (not-concluded)
-              (send :self t named-queues)
-              (route-messages routing-table named-queues)
-              (dispatch named-queues routing-table conclude-predicate)
-              'done)))))))
-      
-(defun helloworld3 ()
-  (let (named-queues
-	conclude
-        counter)
-    (let ((self-handler (lambda (message) (default-container-handler message named-queues))))
-      (let ((conclude-predicate (lambda () conclude)))
-        (flet ((not-concluded () (setf conclude nil))
-               (concluded () (setf conclude t)))
-          (let ((hello (lambda (message) (declare (ignore message))
-                         (format *standard-output* "hello~%")
-                         (send 'hello t named-queues)))
-                (world (lambda (message) (declare (ignore message))
-                         (format *standard-output* "world ~a~%" counter)
-                         (decf counter)
-                         (when (<= counter 0)
-                             (concluded)))))
-            (let ((routing-table
-                   (list ;; { sender (receivers) } 
-                       (list :self (list 'hello 'helloc))
-                       (list 'hello (list 'world))
-                       (list 'helloc (list 'worldz)))))
-              
-              (setf named-queues (list ;; { name inq outq }
-                                       (list :self self-handler nil nil)
-                                       (list 'hello hello nil nil)
-                                       (list 'helloc hello nil nil)
-                                       (list 'world world nil nil)
-                                       (list 'worldz world nil nil)))
-              (let ((children (list :self hello hello world world)))
-                (setf counter 2)
-                (not-concluded)
-                (send :self t named-queues)
-                (route-messages routing-table named-queues)
-                (dispatch named-queues routing-table conclude-predicate)
-                'done))))))))
-      
-	    
