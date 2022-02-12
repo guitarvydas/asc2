@@ -56,7 +56,8 @@
       nil
       (let ((receiver (first receivers)))
 	(let ((receiver-descriptor (find-component-descriptor receiver named-queues)))
-	  (enqueue-input-message message receiver-descriptor)))))
+	  (enqueue-input-message message receiver-descriptor)
+          (route-message message (cdr receivers) named-queues)))))
 
 (defun route-message-to-all-receivers (from message table named-queues)
   ;; a routing descriptor is a 2-tuple { from, to+ }
@@ -130,6 +131,43 @@
               (send :self t named-queues)
               (route-messages routing-table named-queues)
               (dispatch (list :self hello world) named-queues routing-table conclude-predicate)
+              'done)))))))
+
+(defun helloworld2 ()
+  (let (named-queues
+	conclude
+        counter)
+    (let ((self-handler (lambda (message) (default-container-handler message named-queues))))
+      (let ((conclude-predicate (lambda () conclude)))
+        (flet ((not-concluded () (setf conclude nil))
+               (concluded () (setf conclude t)))
+          (let ((hello (lambda (message) (declare (ignore message))
+                         (format *standard-output* "hello~%")
+                         (send 'hello t named-queues)))
+                (hellob (lambda (message) (declare (ignore message))
+                         (format *standard-output* "hellob~%")
+                         (send 'hello t named-queues)))
+                (world (lambda (message) (declare (ignore message))
+                         (format *standard-output* "world ~a~%" counter)
+                         (decf counter)
+                         (when (<= counter 0)
+                             (concluded)))))
+            (let ((routing-table
+                   (list ;; { sender (receivers) } 
+                       (list :self (list 'hello 'hellob))
+                       (list 'hello (list 'world))
+                       (list 'hellob (list 'world)))))
+              
+              (setf named-queues (list ;; { name inq outq }
+                                       (list :self self-handler nil nil)
+                                       (list 'hello hello nil nil)
+                                       (list 'hellob hello nil nil)
+                                       (list 'world world nil nil)))
+              (setf counter 2)
+              (not-concluded)
+              (send :self t named-queues)
+              (route-messages routing-table named-queues)
+              (dispatch (list :self hello hello world) named-queues routing-table conclude-predicate)
               'done)))))))
       
 	    
