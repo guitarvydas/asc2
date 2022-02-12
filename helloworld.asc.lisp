@@ -5,10 +5,14 @@
 ;; fifo front is (first q)
 ;; append is to end of q (last q) (fifo end)
 ;; (using symbol macros to avoid creating defsetfs)
-(defmacro port-field (x) `(first ,x))
+(defmacro name-field (x) `(first ,x))
 (defmacro handler-field (x) `(second ,x))
 (defmacro inq-field (x) `(third ,x))
 (defmacro outq-field (x) `(fourth ,x))
+
+;; routing descriptor has pair as the sender (component pin)
+(defmacro port-field (x) `(first ,x))
+(defmacro receiver-name (x) `(first ,x))
 
 (defun find-component-descriptor (target-name queues)
   (assert (not (null queues)))
@@ -60,7 +64,7 @@
   (if (null receivers)
       nil
       (let ((receiver (first receivers)))
-	(let ((receiver-descriptor (find-component-descriptor receiver named-queues)))
+	(let ((receiver-descriptor (find-component-descriptor (receiver-name receiver) named-queues)))
 	  (let ((message-copy (copy-message-and-change-pin message :in)))
 	    (enqueue-input-message message-copy receiver-descriptor))
           (route-message message (cdr receivers) named-queues)))))
@@ -117,26 +121,28 @@
         (flet ((not-concluded () (setf conclude nil))
                (concluded () (setf conclude t)))
           (let ((hello (lambda (message)
+                         (format *standard-output* "hello gets ~a~%" message)
 			 (ecase (first message)
 			   (:in
                             (format *standard-output* "hello~%")
                             (send '(hello :out) t named-queues)))))
                 (world (lambda (message)
+                         (format *standard-output* "world gets ~a~%" message)
 			 (ecase (first message)
 			   (:in
                             (format *standard-output* "world~%")
                             (concluded))))))
             (let ((routing-table
                    (list ;; { sender (receivers) } 
-                       (list '(:self :out) (list 'hello))
-                       (list '(hello :out) (list 'world)))))
+                       (list '(:self :in) (list '(hello :in)))
+                       (list '(hello :out) (list '(world :in))))))
               
               (setf named-queues (list ;; { name inq outq }
                                        (list :self self-handler nil nil)
                                        (list 'hello hello nil nil)
                                        (list 'world world nil nil)))
               (not-concluded)
-              (send '(:self :out) t named-queues)
+              (send '(:self :in) t named-queues)
               (route-messages routing-table named-queues)
               (dispatch named-queues routing-table conclude-predicate)
               'done)))))))
