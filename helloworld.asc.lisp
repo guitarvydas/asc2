@@ -1,15 +1,15 @@
 (proclaim '(optimize (debug 3) (safety 3) (speed 0)))
 
-(defun find-named-queue (target-name queues)
+(defun find-component-descriptor (target-name queues)
   (assert (not (null queues)))
   (let ((named-q (first queues)))
     (let ((name (first named-q)))
       (if (eq name target-name)
 	named-q
-	(find-named-queue target-name (cdr queues))))))
+	(find-component-descriptor target-name (cdr queues))))))
 
 (defun send (component data queues)
-  (let ((named-queue (find-named-queue component queues)))
+  (let ((named-queue (find-component-descriptor component queues)))
     (append-data-to-output-queue named-queue data)))
 
 ;;;; named queues
@@ -45,32 +45,33 @@
           routing-descriptor
         (find-from from (cdr table))))))
 
-(defun route-message (message receivers)
+(defun route-message (message receivers named-queues)
   (if (null receivers)
       nil
-    (let ((receiver (first receivers)))
-      (enqueue-input-message message receiver))))
+      (let ((receiver (first receivers)))
+	(let ((receiver-descriptor (find-component-descriptor receiver named-queues)))
+	  (enqueue-input-message message receiver-descriptor)))))
 
-(defun route-message-to-all-receivers (from message table)
+(defun route-message-to-all-receivers (from message table named-queues)
   ;; a routing descriptor is a 2-tuple { from, to+ }
   ;; where "to" is a list of named-queues (the named-queue for each receiver)
   (let ((routing-descriptor (find-from from table)))
     (let ((receiver-list (second routing-descriptor)))
-      (route-message message receiver-list))))
+      (route-message message receiver-list named-queues))))
 
-(defun route-per-component (from table named-q)
+(defun route-per-sender (from table named-q named-queues)
   (let ((output-queue (third named-q)))
     (if (null output-queue)
         nil
       (let ((output-message (pop (third named-q))))
-        (route-message-to-all-receivers from output-message table)))))
+        (route-message-to-all-receivers from output-message table named-queues)))))
 
 (defun route-messages (table named-queues)
   (if (null named-queues)
       nil
     (let ((named-q (first named-queues)))
       (let ((name (first named-q)))
-        (route-per-component name table named-q)
+        (route-per-sender name table named-q named-queues)
         (route-messages table (cdr named-queues))))))
   
 (defun dispatch-once (components named-queues conclude?)
@@ -79,7 +80,7 @@
     (loop
      (unless components (return)) ;; exit loop
      (when (funcall conclude?) (return))
-     (let ((named-q (first queues)))
+     (let ((named-q (first queues))
        (let ((message (dequeue-input-message named-q))
              (component (component-field named-q)))
          (when message
@@ -117,7 +118,7 @@
             (not-concluded)
             (send :self t named-queues)
             (route-messages routing-table named-queues)
-            (dispatch (list hello world) named-queues routing-table conclude-predicate)
+            (dispatch (list :self hello world) named-queues routing-table conclude-predicate)
             'done))))))
       
 	    
