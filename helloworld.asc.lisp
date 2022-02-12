@@ -30,15 +30,17 @@
       nil)))
 
 (defun append-data-to-output-queue (named-q data)
-  (setf (outq-field named-q) (if (null (outq-field named-q))
-                                 (list data)
-                               (append (outq-field named-q) (list data)))))
+  (setf (outq-field named-q)
+        (if (null (outq-field named-q))
+            (list data)
+          (append (outq-field named-q) (list data)))))
 
 (defun enqueue-input-message (message receiver-descriptor)
   ;; input queue is (inq-field receiver-descriptor)
-  (setf (inq-field receiver-descriptor) (if (null (inq-field receiver-descriptor))
-                            (list message)
-                          (append (inq-field receiver-descriptor) (list message)))))
+  (setf (inq-field receiver-descriptor)
+        (if (null (inq-field receiver-descriptor))
+            (list message)
+          (append (inq-field receiver-descriptor) (list message)))))
 
         
 (defun find-from (from table)
@@ -67,7 +69,7 @@
   (let ((output-queue (outq-field named-q)))
     (if (null output-queue)
         nil
-      (let ((output-message (pop (third named-q))))
+      (let ((output-message (pop (outq-field named-q))))
         (route-message-to-all-receivers from output-message table named-queues)))))
 
 (defun route-messages (table named-queues)
