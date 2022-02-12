@@ -26,7 +26,7 @@
 (defun dequeue-input-message (named-q)
   (let ((inq (inq-field named-q)))
     (if inq
-        (pop inq)
+        (pop (inq-field named-q))
       nil)))
 
 (defun append-data-to-output-queue (named-q data)
