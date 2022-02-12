@@ -81,24 +81,22 @@
         (route-per-sender name table named-q named-queues)
         (route-messages table (cdr named-queues))))))
   
-(defun dispatch-once (components named-queues conclude?)
+(defun dispatch-once (named-queues conclude?)
   (let ((queues named-queues))
-    (assert (= (length components) (length queues)))
     (loop
-     (unless components (return)) ;; exit loop
+     (unless queues (return)) ;; exit loop
      (when (funcall conclude?) (return))
      (let ((named-q (first queues)))
        (let ((message (dequeue-input-message named-q))
              (handler (handler-field named-q)))
          (when message
            (funcall handler message)))
-       (pop queues)
-       (pop components)))))
+       (pop queues)))))
 
-(defun dispatch (components named-queues routing-table conclude?)
+(defun dispatch (named-queues routing-table conclude?)
   (loop
    (when (funcall conclude?) (return)) ;; exit loop when done
-   (dispatch-once components named-queues conclude?)
+   (dispatch-once named-queues conclude?)
    (route-messages routing-table named-queues)))
           
 
@@ -130,7 +128,7 @@
               (not-concluded)
               (send :self t named-queues)
               (route-messages routing-table named-queues)
-              (dispatch (list :self hello world) named-queues routing-table conclude-predicate)
+              (dispatch named-queues routing-table conclude-predicate)
               'done)))))))
 
 (defun helloworld2 ()
@@ -167,7 +165,7 @@
               (not-concluded)
               (send :self t named-queues)
               (route-messages routing-table named-queues)
-              (dispatch (list :self hello hello world) named-queues routing-table conclude-predicate)
+              (dispatch named-queues routing-table conclude-predicate)
               'done)))))))
       
 (defun helloworld3 ()
@@ -203,7 +201,7 @@
                 (not-concluded)
                 (send :self t named-queues)
                 (route-messages routing-table named-queues)
-                (dispatch children named-queues routing-table conclude-predicate)
+                (dispatch named-queues routing-table conclude-predicate)
                 'done))))))))
       
 	    
