@@ -1,3 +1,5 @@
+(proclaim '(optimize (debug 3) (safety 3) (speed 0)))
+
 (defun find-named-queue (target-name queues)
   (assert (not (null queues)))
   (let ((named-q (first queues)))
@@ -30,9 +32,9 @@
 
 (defun enqueue-input-message (message receiver-descriptor)
   ;; input queue is (second receiver-descriptor)
-  (setf (second named-q) (if (null (second named-q))
+  (setf (second receiver-descriptor) (if (null (second receiver-descriptor))
                             (list message)
-                          (append (second named-q) (list message)))))
+                          (append (second receiver-descriptor) (list message)))))
 
         
 (defun find-from (from table)
@@ -66,50 +68,56 @@
 (defun route-messages (table named-queues)
   (if (null named-queues)
       nil
-    (let ((named-q (fist named-queues)))
+    (let ((named-q (first named-queues)))
       (let ((name (first named-q)))
-      (route-per-component name table named-q)
-      (route-messages table (cdr named-queues)))))
+        (route-per-component name table named-q)
+        (route-messages table (cdr named-queues))))))
+  
+(defun dispatch-once (components named-queues conclude?)
+  (let ((queues named-queues))
+    (assert (= (length components) (length queues)))
+    (loop
+     (unless components (return)) ;; exit loop
+     (when (funcall conclude?) (return))
+     (let ((named-q (first queues)))
+       (let ((message (dequeue-input-message named-q))
+             (component (component-field named-q)))
+         (when message
+           (funcall component message)))
+       (pop queues)
+       (pop components)))))
+
+(defun dispatch (components named-queues routing-table conclude?)
+  (loop
+   (when (funcall conclude?) (return)) ;; exit loop when done
+   (dispatch-once components named-queues conclude?)
+   (route-messages routing-table named-queues)))
+          
 
 (defun helloworld ()
-  (let ((named-queues (list
+  (let ((named-queues (list ;; { name inq outq }
 		       (list :self nil nil)
 		       (list 'hello nil nil)
 		       (list 'world nil nil)))
 	conclude)
-    (let ((hello (lambda (message) (declare (ignore message))
-		   (format *standard-output* "hello~%")
-		   (send 'hello t named-queues)))
-	  (world (lambda (message) (declare (ignore message))
-		   (format *standard-output* "world~%"))))
-      (let ((routing-table
-             (list
-              (list :self (list 'hello))
-              (list 'hello (list 'world)))))
-
-      (flet ((dispatch-once (components)
-               (let ((queues named-queues))
-                 (assert (= (length components) (length queues)))
-                 (loop
-                   (unless components (return)) ;; exit loop
-                   (when conclude (return))
-                   (let ((named-q (first queues)))
-                     (let ((message (dequeue-input-message named-q))
-                           (component (component-field named-q)))
-                       (when message
-                         (funcall component message)))
-                     (pop queues)
-                     (pop components))))))
-        (flet ((dispatch (components)
-                 (setf conclude nil)
-                 (loop
-                  (when conclude (return)) ;; exit loop when done
-                  (dispatch-once components)
-                  (route-messages routing-table named-queues))))
-          
-          (send :self t named-queues)
-          (route-messages routing-table named-queues)
-          (dispatch (list hello world))
-          'done)))))
+    (let ((conclude-predicate (lambda () conclude)))
+      (flet ((not-concluded () (setf conclude nil))
+             (concluded () (setf conclude t)))
+        (let ((hello (lambda (message) (declare (ignore message))
+                       (format *standard-output* "hello~%")
+                       (send 'hello t named-queues)))
+              (world (lambda (message) (declare (ignore message))
+                       (format *standard-output* "world~%")
+                       (concluded))))
+          (let ((routing-table
+                 (list ;; { sender (receivers) } 
+                       (list :self (list 'hello))
+                       (list 'hello (list 'world)))))
+            
+            (not-concluded)
+            (send :self t named-queues)
+            (route-messages routing-table named-queues)
+            (dispatch (list hello world) named-queues routing-table conclude-predicate)
+            'done))))))
       
 	    
