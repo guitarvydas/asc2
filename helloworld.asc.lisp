@@ -190,18 +190,20 @@
                    (list ;; { sender (receivers) } 
                        (list :self (list 'hello 'helloc))
                        (list 'hello (list 'world))
-                       (list 'helloc (list 'world)))))
+                       (list 'helloc (list 'worldz)))))
               
               (setf named-queues (list ;; { name inq outq }
                                        (list :self self-handler nil nil)
                                        (list 'hello hello nil nil)
                                        (list 'helloc hello nil nil)
-                                       (list 'world world nil nil)))
-              (setf counter 2)
-              (not-concluded)
-              (send :self t named-queues)
-              (route-messages routing-table named-queues)
-              (dispatch (list :self hello hello world) named-queues routing-table conclude-predicate)
-              'done)))))))
+                                       (list 'world world nil nil)
+                                       (list 'worldz world nil nil)))
+              (let ((children (list :self hello hello world world)))
+                (setf counter 2)
+                (not-concluded)
+                (send :self t named-queues)
+                (route-messages routing-table named-queues)
+                (dispatch children named-queues routing-table conclude-predicate)
+                'done))))))))
       
 	    
