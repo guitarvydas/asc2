@@ -14,17 +14,24 @@
 (defmacro connection-sender (x) `(first ,x))
 (defmacro connection-receivers (x) `(first ,x))
 
-;; messages
-(defmacro message-port (m) `(first ,m))
-(defmacro message-data (m) `(second ,m))
-
 ;; ports
 (defmacro port-component (p) `(first ,p))
 (defmacro port-tag (p) `(second ,p))
+(defmacro input-port-component (p) `,(port-component p))
+(defmacro input-port-tag (p) `,(port-tag p))
+(defmacro output-port-component (p) `,(port-component p))
+(defmacro output-port-tag (p) `,(port-tag p))
 
-(defun same-port (a b)
+(defun same-port? (a b)
   (and (eq (port-component a) (port-component b))
        (eq (port-tag a) (port-tag b))))
+
+;; messages
+(defmacro message-port (m) `(first ,m))
+(defmacro message-data (m) `(second ,m))
+(defmacro message-tracer (m) `(if (third ,m) (third ,m) nil))
+(defmacro message-tag (m) `(port-tag (message-port ,m)))
+(defmacro new-message (port data trace) `(list ,port ,data ,trace))
 
 (defun find-component-descriptor (target-port queues)
   (assert (not (null queues)))
@@ -34,9 +41,9 @@
 	part
 	(find-component-descriptor target-port (cdr queues))))))
 
-(defun send (port data queues)
-  (let ((partueue (find-component-descriptor port queues)))
-    (append-data-to-output-queue partueue (list port data))))
+(defun send (port data cause queues)
+  (let ((part (find-component-descriptor port queues)))
+    (append-data-to-output-queue part (list port data (list cause)))))
 
 
 (defun dequeue-input-message (part)
@@ -63,20 +70,21 @@
   (assert (not (null table))) ;; internal error - routing not fully specified
   (let ((connection-descriptor (first table)))
     (let ((cd-port (connection-sender connection-descriptor)))
-      (if (same-port sender-port cd-port)
+      (if (same-port? sender-port cd-port)
           connection-descriptor
         (find-from sender-port (cdr table))))))
 
-(defun copy-message-and-change-pin (message new-pin)
-  (let ((data (second message)))
-    (list new-pin data)))
+(defun copy-message-and-change-port (message new-port)
+  (let ((data (message-data message))
+	(from-port (message-port message)))
+    (new-message new-port data message)))
 
 (defun route-message (message receivers parts)
   (if (null receivers)
       nil
       (let ((receiver (first receivers)))
 	(let ((receiver-descriptor (find-component-descriptor receiver parts)))
-	  (let ((message-copy (copy-message-and-change-pin message (port-tag receiver))))
+	  (let ((message-copy (copy-message-and-change-port message receiver)))
 	    (enqueue-input-message message-copy receiver-descriptor))
           (route-message message (cdr receivers) parts)))))
 
@@ -122,25 +130,25 @@
    (route-messages routing-table parts)))
           
 
-(defun default-container-handler (message parts)
-  (send :self message parts))
+(defun default-container-handler (message cause parts)
+  (send :self message cause parts))
 
 (defun helloworld ()
   (let (parts
 	conclude)
-    (let ((self-handler (lambda (message) (default-container-handler message parts))))
+    (let ((self-handler (lambda (message) (default-container-handler message message parts))))
       (let ((conclude-predicate (lambda () conclude)))
         (flet ((not-concluded () (setf conclude nil))
                (concluded () (setf conclude t)))
           (let ((hello (lambda (message)
                          (format *standard-output* "hello gets ~a~%" message)
-			 (ecase (first message)
+			 (ecase (message-tag message)
 			   (:in
                             (format *standard-output* "hello~%")
-                            (send '(hello :out) t parts)))))
+                            (send '(hello :out) t message parts)))))
                 (world (lambda (message)
                          (format *standard-output* "world gets ~a~%" message)
-			 (ecase (first message)
+			 (ecase (message-tag message)
 			   (:in
                             (format *standard-output* "world~%")
                             (concluded))))))
@@ -154,7 +162,7 @@
                                        (list 'hello hello nil nil)
                                        (list 'world world nil nil)))
               (not-concluded)
-              (send '(:self :in) t parts)
+              (send '(:self :in) t nil parts)
               (route-messages routing-table parts)
               (dispatch parts routing-table conclude-predicate)
               'done)))))))
@@ -162,25 +170,25 @@
 (defun helloworld5 ()
   (let (parts
 	conclude)
-    (let ((self-handler (lambda (message) (default-container-handler message parts))))
+    (let ((self-handler (lambda (message) (default-container-handler message message parts))))
       (let ((conclude-predicate (lambda () conclude)))
         (flet ((not-concluded () (setf conclude nil))
                (concluded () (setf conclude t)))
           (let ((hello (lambda (message)
                          (format *standard-output* "hello gets ~a~%" message)
-			 (ecase (first message)
+			 (ecase (message-tag message)
 			   (:in
                             (format *standard-output* "hello~%")
-                            (send '(hello :out1) t parts)
-                            (send '(hello :out2) t parts)))))
+                            (send '(hello :out1) t message parts)
+                            (send '(hello :out2) t message parts)))))
                 (world1 (lambda (message)
                          (format *standard-output* "world1 gets ~a~%" message)
-			 (ecase (first message)
+			 (ecase (message-tag message)
 			   (:inw1
                             (format *standard-output* "world1~%")))))
                 (world2 (lambda (message)
                          (format *standard-output* "world2 gets ~a~%" message)
-			 (ecase (first message)
+			 (ecase (message-tag message)
 			   (:inw2
                             (format *standard-output* "world2~%")
                             (concluded))))))
@@ -196,7 +204,7 @@
                                        (list 'world1 world1 nil nil)
                                        (list 'world2 world2 nil nil)))
               (not-concluded)
-              (send '(:self :in) t parts)
+              (send '(:self :in) t nil parts)
               (route-messages connections parts)
               (dispatch parts connections conclude-predicate)
               'done)))))))
