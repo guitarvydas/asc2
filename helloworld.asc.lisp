@@ -1,7 +1,6 @@
 (proclaim '(optimize (debug 3) (safety 3) (speed 0)))
 
-;;;; named queues
-;; in this POC, a part is a triple {name message-handler input-q output-q}
+;; in this POC, a part is a tuple {name message-handler input-q output-q vars}
 ;; fifo front is (first q)
 ;; append is to end of q (last q) (fifo end)
 ;; (using symbol macros to avoid creating defsetfs)
@@ -10,10 +9,9 @@
 (defmacro part-inq-field (x) `(third ,x))
 (defmacro part-outq-field (x) `(fourth ,x))
 
-;; routing descriptor has pair as the sender (component pin)
-(defmacro port-field (x) `(first ,x))
-(defmacro receiver-name (x) `(first ,x))
-(defmacro port-name (x) `(first ,x))
+;; connection descriptor has pair as the sender (component pin)
+(defmacro connection-sender (x) `(first ,x))
+(defmacro connection-receivers (x) `(first ,x))
 
 ;; messages
 (defmacro message-port (m) `(first ,m))
@@ -61,10 +59,10 @@
         
 (defun find-from (sender-port table)
   (assert (not (null table))) ;; internal error - routing not fully specified
-  (let ((routing-descriptor (first table)))
-    (let ((rd-port (port-field routing-descriptor)))
-      (if (same-port sender-port rd-port)
-          routing-descriptor
+  (let ((connection-descriptor (first table)))
+    (let ((cd-port (connection-sender connection-descriptor)))
+      (if (same-port sender-port cd-port)
+          connection-descriptor
         (find-from sender-port (cdr table))))))
 
 (defun copy-message-and-change-pin (message new-pin)
@@ -184,7 +182,7 @@
 			   (:inw2
                             (format *standard-output* "world2~%")
                             (concluded))))))
-            (let ((routing-table
+            (let ((connections
                    (list ;; { sender (receivers) } 
                        (list '(:self :in) (list '(hello :in)))
                        (list '(hello :out1) (list '(world1 :inw1)))
@@ -197,7 +195,7 @@
                                        (list 'world2 world2 nil nil)))
               (not-concluded)
               (send '(:self :in) t parts)
-              (route-messages routing-table parts)
-              (dispatch parts routing-table conclude-predicate)
+              (route-messages connections parts)
+              (dispatch parts connections conclude-predicate)
               'done)))))))
 
