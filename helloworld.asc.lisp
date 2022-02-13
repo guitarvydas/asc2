@@ -1,7 +1,7 @@
 (proclaim '(optimize (debug 3) (safety 3) (speed 0)))
 
 ;;;; named queues
-;; in this POC, a named-q is a triple {name message-handler input-q output-q}
+;; in this POC, a part is a triple {name message-handler input-q output-q}
 ;; fifo front is (first q)
 ;; append is to end of q (last q) (fifo end)
 ;; (using symbol macros to avoid creating defsetfs)
@@ -28,28 +28,28 @@
 
 (defun find-component-descriptor (target-port queues)
   (assert (not (null queues)))
-  (let ((named-q (first queues)))
-    (let ((name (part-name-field named-q)))
+  (let ((part (first queues)))
+    (let ((name (part-name-field part)))
       (if (eq name (port-name target-port))
-	named-q
+	part
 	(find-component-descriptor target-port (cdr queues))))))
 
 (defun send (port data queues)
-  (let ((named-queue (find-component-descriptor port queues)))
-    (append-data-to-output-queue named-queue (list port data))))
+  (let ((partueue (find-component-descriptor port queues)))
+    (append-data-to-output-queue partueue (list port data))))
 
 
-(defun dequeue-input-message (named-q)
-  (let ((inq (part-inq-field named-q)))
+(defun dequeue-input-message (part)
+  (let ((inq (part-inq-field part)))
     (if inq
-        (pop (part-inq-field named-q))
+        (pop (part-inq-field part))
       nil)))
 
-(defun append-data-to-output-queue (named-q event)
-  (setf (part-outq-field named-q)
-        (if (null (part-outq-field named-q))
+(defun append-data-to-output-queue (part event)
+  (setf (part-outq-field part)
+        (if (null (part-outq-field part))
             (list event)
-          (append (part-outq-field named-q) (list event)))))
+          (append (part-outq-field part) (list event)))))
 
 (defun enqueue-input-message (message receiver-descriptor)
   ;; input queue is (part-inq-field receiver-descriptor)
@@ -82,25 +82,25 @@
 
 (defun route-message-to-all-receivers (message table parts)
   ;; a routing descriptor is a 2-tuple { from, to+ }
-  ;; where "to" is a list of parts (the named-queue for each receiver)
+  ;; where "to" is a list of parts (the partueue for each receiver)
   (let ((from-port (message-port message)))
     (let ((routing-descriptor (find-from from-port table)))
       (let ((receiver-list (second routing-descriptor)))
         (route-message message receiver-list parts)))))
 
-(defun route-per-sender (table named-q parts)
-  (let ((output-queue (part-outq-field named-q)))
+(defun route-per-sender (table part parts)
+  (let ((output-queue (part-outq-field part)))
     (if (null output-queue)
         nil
-      (let ((output-message (pop (part-outq-field named-q))))
+      (let ((output-message (pop (part-outq-field part))))
         (route-message-to-all-receivers output-message table parts)))))
 
 (defun route-messages (table parts)
   (if (null parts)
       nil
-    (let ((named-q (first parts)))
-      (let ((name (part-name-field named-q)))
-        (route-per-sender table named-q parts)
+    (let ((part (first parts)))
+      (let ((name (part-name-field part)))
+        (route-per-sender table part parts)
         (route-messages table (cdr parts))))))
   
 (defun dispatch-once (parts conclude?)
@@ -108,9 +108,9 @@
     (loop
      (unless queues (return)) ;; exit loop
      (when (funcall conclude?) (return))
-     (let ((named-q (first queues)))
-       (let ((message (dequeue-input-message named-q))
-             (handler (part-handler-field named-q)))
+     (let ((part (first queues)))
+       (let ((message (dequeue-input-message part))
+             (handler (part-handler-field part)))
          (when message
            (funcall handler message)))
        (pop queues)))))
