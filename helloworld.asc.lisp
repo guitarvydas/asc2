@@ -230,25 +230,28 @@
         (let (
               
               (hello (lambda (message)
-                       (format *standard-output* "hello gets ~a~%" message)
+                       ;(format *standard-output* "hello gets ~a~%" message)
                        (ecase (message-tag message)
                          (:in
                           (format *standard-output* "hello~%")
                           (send '(hello :out) t message parts)))))
               
               (world (lambda (message)
-                       (format *standard-output* "world gets ~a~%" message)
+                       ;(format *standard-output* "world gets ~a~%" message)
                        (ecase (message-tag message)
                          (:in
                           (format *standard-output* "world~%")
                           (send-sync '(world result) 'eof message parts)))))
               
               (self-handler (lambda (message)
-                              (format *standard-output* ":self gets ~a~%" message)
+                              ;(format *standard-output* ":self gets ~a~%" message)
                               (case (message-tag message)
                                 (:in
                                  (default-container-handler message message parts))
-                                (otherwise (concluded)))))
+                                (result
+                                 (setf result (message-data message))
+                                 (concluded))
+                                (otherwise (assert nil)))))
               
               )
           (let ((connections
