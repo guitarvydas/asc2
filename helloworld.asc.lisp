@@ -12,7 +12,7 @@
 
 ;; connection descriptor has pair as the sender (component pin)
 (defmacro connection-sender (x) `(first ,x))
-(defmacro connection-receivers (x) `(first ,x))
+(defmacro connection-receivers (x) `(second ,x))
 
 ;; ports
 (defmacro port-component (p) `(first ,p))
@@ -34,13 +34,13 @@
 (defmacro message-tag (m) `(port-tag (message-port ,m)))
 (defmacro new-message (port data trace kind) `(list ,port ,data ,trace ,kind))
 
-(defun find-part-descriptor (target-port queues)
-  (assert (not (null queues)))
-  (let ((part (first queues)))
+(defun find-part-descriptor (target-port parts)
+  (assert (not (null parts)))
+  (let ((part (first parts))
     (let ((name (part-name part)))
       (if (eq name (port-component target-port))
 	part
-	(find-part-descriptor target-port (cdr queues))))))
+	(find-part-descriptor target-port (cdr parts))))))
 
 (defun sendk (port data cause queues kind)
   (let ((part (find-part-descriptor port queues)))
@@ -71,13 +71,11 @@
           (append (part-inq receiver-descriptor) (list message)))))
 
         
-(defun maybe-find-connection (sender-port table)
-  (let ((result (find-connection sender-port table)))
-    result))
-
 (defun find-connection (sender-port table)
   (if (null table)
-      nil
+      (progn
+	(format *error-output* "sender ~a not found in connections table~%" sender-port)
+	(assert nil)) ;; internal error if sender not found in connections table
     (let ((connection-descriptor (first table)))
       (let ((cd-port (connection-sender connection-descriptor)))
         (if (same-port? sender-port cd-port)
@@ -99,15 +97,17 @@
           (route-message message (cdr receivers) parts)))))
 
 (defun route-message-to-all-receivers (message connections parts)
+  ;; route message from sender to all receivers
+  ;;
   ;; a routing descriptor is a 2-tuple { from, to+ }
   ;; where "to" is a list of parts (the partueue for each receiver)
-  (let ((from-port (message-port message)))
-    (let ((routing-descriptor (maybe-find-connection from-port connections)))
-      (when routing-descriptor
-        (let ((receiver-list (second routing-descriptor)))
-          (route-message message receiver-list parts))))))
+  (let ((sender-port (message-port message)))
+    (let ((routing-descriptor (find-connection sender-port connections)))
+      (let ((receiver-list (connection-receivers routing-descriptor)))
+          (route-message message receiver-list parts)))))
 
 (defun route-per-sender (connections part parts)
+  ;; if this part has anything on its output queue, route one message to each receiver, repeat
   (let ((output-queue (part-outq part)))
     (if (null output-queue)
         nil
@@ -115,12 +115,12 @@
         (route-message-to-all-receivers output-message connections parts)))))
 
 (defun route-messages (connections parts)
+  ;; for each part, ...
   (if (null parts)
       nil
     (let ((part (first parts)))
-      (let ((name (part-name part)))
-        (route-per-sender connections part parts)
-        (route-messages connections (cdr parts))))))
+      (route-per-sender connections part parts)
+      (route-messages connections (cdr parts)))))
   
 (defun dispatch-once (parts conclude?)
   (let ((queues parts))
@@ -241,18 +241,22 @@
                        (ecase (message-tag message)
                          (:in
                           (format *standard-output* "world~%")
-                          (send-sync '(world result) 'eof message parts)
-                          (concluded)))))
+                          (send-sync '(world result) 'eof message parts)))))
               
               (self-handler (lambda (message)
-                              (default-container-handler message message parts)))
+                              (format *standard-output* ":self gets ~a~%" message)
+                              (case (message-tag message)
+                                (:in
+                                 (default-container-handler message message parts))
+                                (otherwise (concluded)))))
               
               )
           (let ((connections
                  (list ;; { sender (receivers) } 
                        (list '(:self :in) (list '(hello :in)))
-                       (list '(hello :out) (list '(world :in))))))
-            
+                       (list '(hello :out) (list '(world :in)))
+                       (list '(world result) (list '(:self result)))
+                       )))
             (setf parts (list ;; { name inq outq }
                               (list :self self-handler nil nil)
                               (list 'hello hello nil nil)
@@ -262,5 +266,3 @@
             (route-messages connections parts)
             (dispatch parts connections conclude-predicate)
             result))))))
-
-(defun get-var (x y) (assert nil)) ;; niy
