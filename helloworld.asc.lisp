@@ -71,23 +71,18 @@
           (append (part-inq receiver-descriptor) (list message)))))
 
         
-(defun find-from (sender-port table)
-  (let ((result (find-from1 sender-port table)))
-    (assert result) ;; internal error - routing not fully specified
+(defun maybe-find-connection (sender-port table)
+  (let ((result (find-connection sender-port table)))
     result))
 
-(defun maybe-find-from (sender-port table)
-  (let ((result (find-from1 sender-port table)))
-    result))
-
-(defun find-from1 (sender-port table)
+(defun find-connection (sender-port table)
   (if (null table)
       nil
     (let ((connection-descriptor (first table)))
       (let ((cd-port (connection-sender connection-descriptor)))
         (if (same-port? sender-port cd-port)
             connection-descriptor
-          (find-from1 sender-port (cdr table)))))))
+          (find-connection sender-port (cdr table)))))))
 
 (defun copy-message-and-change-port (message new-port)
   (let ((data (message-data message))
@@ -107,7 +102,7 @@
   ;; a routing descriptor is a 2-tuple { from, to+ }
   ;; where "to" is a list of parts (the partueue for each receiver)
   (let ((from-port (message-port message)))
-    (let ((routing-descriptor (maybe-find-from from-port connections)))
+    (let ((routing-descriptor (maybe-find-connection from-port connections)))
       (when routing-descriptor
         (let ((receiver-list (second routing-descriptor)))
           (route-message message receiver-list parts))))))
