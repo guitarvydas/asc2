@@ -32,7 +32,7 @@
 (defmacro message-data (m) `(second ,m))
 (defmacro message-tracer (m) `(if (third ,m) (third ,m) nil))
 (defmacro message-tag (m) `(port-tag (message-port ,m)))
-(defmacro new-async-message (port data trace) `(list ,port ,data ,trace :async))
+(defmacro new-message (port data trace kind) `(list ,port ,data ,trace ,kind))
 
 (defun find-component-descriptor (target-port queues)
   (assert (not (null queues)))
@@ -44,7 +44,7 @@
 
 (defun send (port data cause queues)
   (let ((part (find-component-descriptor port queues)))
-    (append-data-to-output-queue part (new-async-message port data (list cause)))))
+    (append-data-to-output-queue part (new-message port data (list cause) :async))))
 
 
 (defun dequeue-input-message (part)
@@ -78,7 +78,7 @@
 (defun copy-message-and-change-port (message new-port)
   (let ((data (message-data message))
 	(from-port (message-port message)))
-    (new-async-message new-port data message)))
+    (new-message new-port data message :async)))
 
 (defun route-message (message receivers parts)
   (if (null receivers)
