@@ -5,10 +5,10 @@
 ;; fifo front is (first q)
 ;; append is to end of q (last q) (fifo end)
 ;; (using symbol macros to avoid creating defsetfs)
-(defmacro child-name-field (x) `(first ,x))
-(defmacro child-handler-field (x) `(second ,x))
-(defmacro child-inq-field (x) `(third ,x))
-(defmacro child-outq-field (x) `(fourth ,x))
+(defmacro part-name-field (x) `(first ,x))
+(defmacro part-handler-field (x) `(second ,x))
+(defmacro part-inq-field (x) `(third ,x))
+(defmacro part-outq-field (x) `(fourth ,x))
 
 ;; routing descriptor has pair as the sender (component pin)
 (defmacro port-field (x) `(first ,x))
@@ -29,7 +29,7 @@
 (defun find-component-descriptor (target-port queues)
   (assert (not (null queues)))
   (let ((named-q (first queues)))
-    (let ((name (child-name-field named-q)))
+    (let ((name (part-name-field named-q)))
       (if (eq name (port-name target-port))
 	named-q
 	(find-component-descriptor target-port (cdr queues))))))
@@ -40,23 +40,23 @@
 
 
 (defun dequeue-input-message (named-q)
-  (let ((inq (child-inq-field named-q)))
+  (let ((inq (part-inq-field named-q)))
     (if inq
-        (pop (child-inq-field named-q))
+        (pop (part-inq-field named-q))
       nil)))
 
 (defun append-data-to-output-queue (named-q event)
-  (setf (child-outq-field named-q)
-        (if (null (child-outq-field named-q))
+  (setf (part-outq-field named-q)
+        (if (null (part-outq-field named-q))
             (list event)
-          (append (child-outq-field named-q) (list event)))))
+          (append (part-outq-field named-q) (list event)))))
 
 (defun enqueue-input-message (message receiver-descriptor)
-  ;; input queue is (child-inq-field receiver-descriptor)
-  (setf (child-inq-field receiver-descriptor)
-        (if (null (child-inq-field receiver-descriptor))
+  ;; input queue is (part-inq-field receiver-descriptor)
+  (setf (part-inq-field receiver-descriptor)
+        (if (null (part-inq-field receiver-descriptor))
             (list message)
-          (append (child-inq-field receiver-descriptor) (list message)))))
+          (append (part-inq-field receiver-descriptor) (list message)))))
 
         
 (defun find-from (sender-port table)
@@ -71,64 +71,64 @@
   (let ((data (second message)))
     (list new-pin data)))
 
-(defun route-message (message receivers named-queues)
+(defun route-message (message receivers parts)
   (if (null receivers)
       nil
       (let ((receiver (first receivers)))
-	(let ((receiver-descriptor (find-component-descriptor receiver named-queues)))
+	(let ((receiver-descriptor (find-component-descriptor receiver parts)))
 	  (let ((message-copy (copy-message-and-change-pin message (port-tag receiver))))
 	    (enqueue-input-message message-copy receiver-descriptor))
-          (route-message message (cdr receivers) named-queues)))))
+          (route-message message (cdr receivers) parts)))))
 
-(defun route-message-to-all-receivers (message table named-queues)
+(defun route-message-to-all-receivers (message table parts)
   ;; a routing descriptor is a 2-tuple { from, to+ }
-  ;; where "to" is a list of named-queues (the named-queue for each receiver)
+  ;; where "to" is a list of parts (the named-queue for each receiver)
   (let ((from-port (message-port message)))
     (let ((routing-descriptor (find-from from-port table)))
       (let ((receiver-list (second routing-descriptor)))
-        (route-message message receiver-list named-queues)))))
+        (route-message message receiver-list parts)))))
 
-(defun route-per-sender (table named-q named-queues)
-  (let ((output-queue (child-outq-field named-q)))
+(defun route-per-sender (table named-q parts)
+  (let ((output-queue (part-outq-field named-q)))
     (if (null output-queue)
         nil
-      (let ((output-message (pop (child-outq-field named-q))))
-        (route-message-to-all-receivers output-message table named-queues)))))
+      (let ((output-message (pop (part-outq-field named-q))))
+        (route-message-to-all-receivers output-message table parts)))))
 
-(defun route-messages (table named-queues)
-  (if (null named-queues)
+(defun route-messages (table parts)
+  (if (null parts)
       nil
-    (let ((named-q (first named-queues)))
-      (let ((name (child-name-field named-q)))
-        (route-per-sender table named-q named-queues)
-        (route-messages table (cdr named-queues))))))
+    (let ((named-q (first parts)))
+      (let ((name (part-name-field named-q)))
+        (route-per-sender table named-q parts)
+        (route-messages table (cdr parts))))))
   
-(defun dispatch-once (named-queues conclude?)
-  (let ((queues named-queues))
+(defun dispatch-once (parts conclude?)
+  (let ((queues parts))
     (loop
      (unless queues (return)) ;; exit loop
      (when (funcall conclude?) (return))
      (let ((named-q (first queues)))
        (let ((message (dequeue-input-message named-q))
-             (handler (child-handler-field named-q)))
+             (handler (part-handler-field named-q)))
          (when message
            (funcall handler message)))
        (pop queues)))))
 
-(defun dispatch (named-queues routing-table conclude?)
+(defun dispatch (parts routing-table conclude?)
   (loop
    (when (funcall conclude?) (return)) ;; exit loop when done
-   (dispatch-once named-queues conclude?)
-   (route-messages routing-table named-queues)))
+   (dispatch-once parts conclude?)
+   (route-messages routing-table parts)))
           
 
-(defun default-container-handler (message named-queues)
-  (send :self message named-queues))
+(defun default-container-handler (message parts)
+  (send :self message parts))
 
 (defun helloworld ()
-  (let (named-queues
+  (let (parts
 	conclude)
-    (let ((self-handler (lambda (message) (default-container-handler message named-queues))))
+    (let ((self-handler (lambda (message) (default-container-handler message parts))))
       (let ((conclude-predicate (lambda () conclude)))
         (flet ((not-concluded () (setf conclude nil))
                (concluded () (setf conclude t)))
@@ -137,7 +137,7 @@
 			 (ecase (first message)
 			   (:in
                             (format *standard-output* "hello~%")
-                            (send '(hello :out) t named-queues)))))
+                            (send '(hello :out) t parts)))))
                 (world (lambda (message)
                          (format *standard-output* "world gets ~a~%" message)
 			 (ecase (first message)
@@ -149,20 +149,20 @@
                        (list '(:self :in) (list '(hello :in)))
                        (list '(hello :out) (list '(world :in))))))
               
-              (setf named-queues (list ;; { name inq outq }
+              (setf parts (list ;; { name inq outq }
                                        (list :self self-handler nil nil)
                                        (list 'hello hello nil nil)
                                        (list 'world world nil nil)))
               (not-concluded)
-              (send '(:self :in) t named-queues)
-              (route-messages routing-table named-queues)
-              (dispatch named-queues routing-table conclude-predicate)
+              (send '(:self :in) t parts)
+              (route-messages routing-table parts)
+              (dispatch parts routing-table conclude-predicate)
               'done)))))))
 
 (defun helloworld5 ()
-  (let (named-queues
+  (let (parts
 	conclude)
-    (let ((self-handler (lambda (message) (default-container-handler message named-queues))))
+    (let ((self-handler (lambda (message) (default-container-handler message parts))))
       (let ((conclude-predicate (lambda () conclude)))
         (flet ((not-concluded () (setf conclude nil))
                (concluded () (setf conclude t)))
@@ -171,8 +171,8 @@
 			 (ecase (first message)
 			   (:in
                             (format *standard-output* "hello~%")
-                            (send '(hello :out1) t named-queues)
-                            (send '(hello :out2) t named-queues)))))
+                            (send '(hello :out1) t parts)
+                            (send '(hello :out2) t parts)))))
                 (world1 (lambda (message)
                          (format *standard-output* "world1 gets ~a~%" message)
 			 (ecase (first message)
@@ -190,14 +190,14 @@
                        (list '(hello :out1) (list '(world1 :inw1)))
                        (list '(hello :out2) (list '(world2 :inw2))))))
               
-              (setf named-queues (list ;; { name inq outq }
+              (setf parts (list ;; { name inq outq }
                                        (list :self self-handler nil nil)
                                        (list 'hello hello nil nil)
                                        (list 'world1 world1 nil nil)
                                        (list 'world2 world2 nil nil)))
               (not-concluded)
-              (send '(:self :in) t named-queues)
-              (route-messages routing-table named-queues)
-              (dispatch named-queues routing-table conclude-predicate)
+              (send '(:self :in) t parts)
+              (route-messages routing-table parts)
+              (dispatch parts routing-table conclude-predicate)
               'done)))))))
 
