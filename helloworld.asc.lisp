@@ -72,12 +72,22 @@
 
         
 (defun find-from (sender-port table)
-  (assert (not (null table))) ;; internal error - routing not fully specified
-  (let ((connection-descriptor (first table)))
-    (let ((cd-port (connection-sender connection-descriptor)))
-      (if (same-port? sender-port cd-port)
-          connection-descriptor
-        (find-from sender-port (cdr table))))))
+  (let ((result (find-from1 sender-port table)))
+    (assert result) ;; internal error - routing not fully specified
+    result))
+
+(defun maybe-find-from (sender-port table)
+  (let ((result (find-from1 sender-port table)))
+    result))
+
+(defun find-from1 (sender-port table)
+  (if (null table)
+      nil
+    (let ((connection-descriptor (first table)))
+      (let ((cd-port (connection-sender connection-descriptor)))
+        (if (same-port? sender-port cd-port)
+            connection-descriptor
+          (find-from1 sender-port (cdr table)))))))
 
 (defun copy-message-and-change-port (message new-port)
   (let ((data (message-data message))
@@ -97,9 +107,10 @@
   ;; a routing descriptor is a 2-tuple { from, to+ }
   ;; where "to" is a list of parts (the partueue for each receiver)
   (let ((from-port (message-port message)))
-    (let ((routing-descriptor (find-from from-port connections)))
-      (let ((receiver-list (second routing-descriptor)))
-        (route-message message receiver-list parts)))))
+    (let ((routing-descriptor (maybe-find-from from-port connections)))
+      (when routing-descriptor
+        (let ((receiver-list (second routing-descriptor)))
+          (route-message message receiver-list parts))))))
 
 (defun route-per-sender (connections part parts)
   (let ((output-queue (part-outq part)))
@@ -216,37 +227,45 @@
 
 (defun helloworld6 ()
   (let (parts
-	conclude)
-    (let ((self-handler (lambda (message) (default-container-handler message message parts))))
-      (let ((conclude-predicate (lambda () conclude)))
-        (flet ((not-concluded () (setf conclude nil))
-               (concluded () (setf conclude t)))
-          (let ((hello (lambda (message)
-                         (format *standard-output* "hello gets ~a~%" message)
-			 (ecase (message-tag message)
-			   (:in
-                            (format *standard-output* "hello~%")
-                            (send '(hello :out) t message parts)))))
-                (world (lambda (message)
-                         (format *standard-output* "world gets ~a~%" message)
-			 (ecase (message-tag message)
-			   (:in
-                            (format *standard-output* "world~%")
-			    (send-sync '(world result) 'eof message parts)
-                            (concluded))))))
-            (let ((connections
-                   (list ;; { sender (receivers) } 
+	conclude
+        result)
+    (let ((conclude-predicate (lambda () conclude)))
+      (flet ((not-concluded () (setf conclude nil))
+             (concluded () (setf conclude t)))
+        (let (
+              
+              (hello (lambda (message)
+                       (format *standard-output* "hello gets ~a~%" message)
+                       (ecase (message-tag message)
+                         (:in
+                          (format *standard-output* "hello~%")
+                          (send '(hello :out) t message parts)))))
+              
+              (world (lambda (message)
+                       (format *standard-output* "world gets ~a~%" message)
+                       (ecase (message-tag message)
+                         (:in
+                          (format *standard-output* "world~%")
+                          (send-sync '(world result) 'eof message parts)
+                          (concluded)))))
+              
+              (self-handler (lambda (message)
+                              (default-container-handler message message parts)))
+              
+              )
+          (let ((connections
+                 (list ;; { sender (receivers) } 
                        (list '(:self :in) (list '(hello :in)))
                        (list '(hello :out) (list '(world :in))))))
-              
-              (setf parts (list ;; { name inq outq }
-                                       (list :self self-handler nil nil)
-                                       (list 'hello hello nil nil)
-                                       (list 'world world nil nil)))
-              (not-concluded)
-              (send '(:self :in) t nil parts)
-              (route-messages connections parts)
-              (dispatch parts connections conclude-predicate)
-	      (get-var '(:self result) parts))))))))
+            
+            (setf parts (list ;; { name inq outq }
+                              (list :self self-handler nil nil)
+                              (list 'hello hello nil nil)
+                              (list 'world world nil nil)))
+            (not-concluded)
+            (send '(:self :in) t nil parts)
+            (route-messages connections parts)
+            (dispatch parts connections conclude-predicate)
+            result))))))
 
 (defun get-var (x y) (assert nil)) ;; niy
