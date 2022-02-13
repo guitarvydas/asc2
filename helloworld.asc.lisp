@@ -13,19 +13,30 @@
 ;; routing descriptor has pair as the sender (component pin)
 (defmacro port-field (x) `(first ,x))
 (defmacro receiver-name (x) `(first ,x))
+(defmacro port-name (x) `(first ,x))
 
-(defun find-component-descriptor (target-name queues)
+;; messages
+(defmacro message-port (m) `(first ,m))
+
+;; ports
+(defmacro port-component (p) `(first ,p))
+(defmacro port-tag (p) `(second ,p))
+
+(defun same-port (a b)
+  (and (eq (port-component a) (port-component b))
+       (eq (port-tag a) (port-tag b))))
+
+(defun find-component-descriptor (target-port queues)
   (assert (not (null queues)))
   (let ((named-q (first queues)))
     (let ((name (name-field named-q)))
-      (if (eq name target-name)
+      (if (eq name (port-name target-port))
 	named-q
-	(find-component-descriptor target-name (cdr queues))))))
+	(find-component-descriptor target-port (cdr queues))))))
 
 (defun send (port data queues)
-  (let ((component (first port)))
-    (let ((named-queue (find-component-descriptor component queues)))
-      (append-data-to-output-queue named-queue (list port data)))))
+  (let ((named-queue (find-component-descriptor port queues)))
+    (append-data-to-output-queue named-queue (list port data))))
 
 
 (defun dequeue-input-message (named-q)
@@ -48,13 +59,13 @@
           (append (inq-field receiver-descriptor) (list message)))))
 
         
-(defun find-from (from table)
+(defun find-from (sender-port table)
   (assert (not (null table))) ;; internal error - routing not fully specified
   (let ((routing-descriptor (first table)))
-    (let ((to (first (port-field routing-descriptor))))
-      (if (eq from to)
+    (let ((rd-port (port-field routing-descriptor)))
+      (if (same-port sender-port rd-port)
           routing-descriptor
-        (find-from from (cdr table))))))
+        (find-from sender-port (cdr table))))))
 
 (defun copy-message-and-change-pin (message new-pin)
   (let ((data (second message)))
@@ -64,31 +75,32 @@
   (if (null receivers)
       nil
       (let ((receiver (first receivers)))
-	(let ((receiver-descriptor (find-component-descriptor (receiver-name receiver) named-queues)))
+	(let ((receiver-descriptor (find-component-descriptor receiver named-queues)))
 	  (let ((message-copy (copy-message-and-change-pin message :in)))
 	    (enqueue-input-message message-copy receiver-descriptor))
           (route-message message (cdr receivers) named-queues)))))
 
-(defun route-message-to-all-receivers (from message table named-queues)
+(defun route-message-to-all-receivers (message table named-queues)
   ;; a routing descriptor is a 2-tuple { from, to+ }
   ;; where "to" is a list of named-queues (the named-queue for each receiver)
-  (let ((routing-descriptor (find-from from table)))
-    (let ((receiver-list (second routing-descriptor)))
-      (route-message message receiver-list named-queues))))
+  (let ((from-port (message-port message)))
+    (let ((routing-descriptor (find-from from-port table)))
+      (let ((receiver-list (second routing-descriptor)))
+        (route-message message receiver-list named-queues)))))
 
-(defun route-per-sender (from table named-q named-queues)
+(defun route-per-sender (table named-q named-queues)
   (let ((output-queue (outq-field named-q)))
     (if (null output-queue)
         nil
       (let ((output-message (pop (outq-field named-q))))
-        (route-message-to-all-receivers from output-message table named-queues)))))
+        (route-message-to-all-receivers output-message table named-queues)))))
 
 (defun route-messages (table named-queues)
   (if (null named-queues)
       nil
     (let ((named-q (first named-queues)))
       (let ((name (name-field named-q)))
-        (route-per-sender name table named-q named-queues)
+        (route-per-sender table named-q named-queues)
         (route-messages table (cdr named-queues))))))
   
 (defun dispatch-once (named-queues conclude?)
@@ -141,6 +153,48 @@
                                        (list :self self-handler nil nil)
                                        (list 'hello hello nil nil)
                                        (list 'world world nil nil)))
+              (not-concluded)
+              (send '(:self :in) t named-queues)
+              (route-messages routing-table named-queues)
+              (dispatch named-queues routing-table conclude-predicate)
+              'done)))))))
+
+(defun helloworld5 ()
+  (let (named-queues
+	conclude)
+    (let ((self-handler (lambda (message) (default-container-handler message named-queues))))
+      (let ((conclude-predicate (lambda () conclude)))
+        (flet ((not-concluded () (setf conclude nil))
+               (concluded () (setf conclude t)))
+          (let ((hello (lambda (message)
+                         (format *standard-output* "hello gets ~a~%" message)
+			 (ecase (first message)
+			   (:in
+                            (format *standard-output* "hello~%")
+                            (send '(hello :out1) t named-queues)
+                            (send '(hello :out2) t named-queues)))))
+                (world1 (lambda (message)
+                         (format *standard-output* "world1 gets ~a~%" message)
+			 (ecase (first message)
+			   (:in
+                            (format *standard-output* "world1~%")))))
+                (world2 (lambda (message)
+                         (format *standard-output* "world2 gets ~a~%" message)
+			 (ecase (first message)
+			   (:in
+                            (format *standard-output* "world2~%")
+                            (concluded))))))
+            (let ((routing-table
+                   (list ;; { sender (receivers) } 
+                       (list '(:self :in) (list '(hello :in)))
+                       (list '(hello :out1) (list '(world1 :in)))
+                       (list '(hello :out2) (list '(world2 :in))))))
+              
+              (setf named-queues (list ;; { name inq outq }
+                                       (list :self self-handler nil nil)
+                                       (list 'hello hello nil nil)
+                                       (list 'world1 world1 nil nil)
+                                       (list 'world2 world2 nil nil)))
               (not-concluded)
               (send '(:self :in) t named-queues)
               (route-messages routing-table named-queues)
