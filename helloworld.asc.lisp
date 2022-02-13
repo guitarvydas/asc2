@@ -6,8 +6,8 @@
 ;; (using symbol macros to avoid creating defsetfs)
 (defmacro part-name-field (x) `(first ,x))
 (defmacro part-handler-field (x) `(second ,x))
-(defmacro part-inq-field (x) `(third ,x))
-(defmacro part-outq-field (x) `(fourth ,x))
+(defmacro part-inq (x) `(third ,x))
+(defmacro part-outq (x) `(fourth ,x))
 
 ;; connection descriptor has pair as the sender (component pin)
 (defmacro connection-sender (x) `(first ,x))
@@ -15,6 +15,7 @@
 
 ;; messages
 (defmacro message-port (m) `(first ,m))
+(defmacro message-data (m) `(second ,m))
 
 ;; ports
 (defmacro port-component (p) `(first ,p))
@@ -28,7 +29,7 @@
   (assert (not (null queues)))
   (let ((part (first queues)))
     (let ((name (part-name-field part)))
-      (if (eq name (port-name target-port))
+      (if (eq name (port-component target-port))
 	part
 	(find-component-descriptor target-port (cdr queues))))))
 
@@ -38,23 +39,23 @@
 
 
 (defun dequeue-input-message (part)
-  (let ((inq (part-inq-field part)))
+  (let ((inq (part-inq part)))
     (if inq
-        (pop (part-inq-field part))
+        (pop (part-inq part))
       nil)))
 
 (defun append-data-to-output-queue (part event)
-  (setf (part-outq-field part)
-        (if (null (part-outq-field part))
+  (setf (part-outq part)
+        (if (null (part-outq part))
             (list event)
-          (append (part-outq-field part) (list event)))))
+          (append (part-outq part) (list event)))))
 
 (defun enqueue-input-message (message receiver-descriptor)
-  ;; input queue is (part-inq-field receiver-descriptor)
-  (setf (part-inq-field receiver-descriptor)
-        (if (null (part-inq-field receiver-descriptor))
+  ;; input queue is (part-inq receiver-descriptor)
+  (setf (part-inq receiver-descriptor)
+        (if (null (part-inq receiver-descriptor))
             (list message)
-          (append (part-inq-field receiver-descriptor) (list message)))))
+          (append (part-inq receiver-descriptor) (list message)))))
 
         
 (defun find-from (sender-port table)
@@ -87,10 +88,10 @@
         (route-message message receiver-list parts)))))
 
 (defun route-per-sender (table part parts)
-  (let ((output-queue (part-outq-field part)))
+  (let ((output-queue (part-outq part)))
     (if (null output-queue)
         nil
-      (let ((output-message (pop (part-outq-field part))))
+      (let ((output-message (pop (part-outq part))))
         (route-message-to-all-receivers output-message table parts)))))
 
 (defun route-messages (table parts)
