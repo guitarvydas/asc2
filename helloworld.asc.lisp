@@ -35,7 +35,6 @@
 (defmacro new-message (port data trace kind) `(list ,port ,data ,trace ,kind))
 
 (defun find-part-descriptor (target-port parts)
-  (format *error-output* "find-part-descriptor ~a ~a~%" target-port parts)
   (assert (not (null parts)))
   (let ((part (first parts)))
     (let ((name (part-name part)))
@@ -44,7 +43,6 @@
 	(find-part-descriptor target-port (cdr parts))))))
 
 (defun sendk (port data cause queues kind)
-  (format *error-output* "sendk~%")
   (let ((part (find-part-descriptor port queues)))
     (append-data-to-output-queue part (new-message port data (list cause) kind))))
 
@@ -93,14 +91,12 @@
   (if (null receivers)
       nil
       (let ((receiver (first receivers)))
-        (format *error-output* "route-message receiver=~a parts=~a~%" receiver parts)
 	(let ((receiver-descriptor (find-part-descriptor receiver parts)))
 	  (let ((message-copy (copy-message-and-change-port message receiver)))
 	    (enqueue-input-message message-copy receiver-descriptor))
           (route-message message (cdr receivers) parts)))))
 
 (defun route-message-to-all-receivers (message connections parts)
-  (format *error-output* "route-message-to-all-receivers parts=~a~%" parts)
   ;; route message from sender to all receivers
   ;;
   ;; a routing descriptor is a 2-tuple { from, to+ }
@@ -112,7 +108,6 @@
 
 (defun route-per-sender (connections part parts)
   ;; if this part has anything on its output queue, route one message to each receiver, repeat
-  (format *error-output* "route-per-sender parts=~a~%" parts)
   (let ((output-queue (part-outq part)))
     (if (null output-queue)
         nil
