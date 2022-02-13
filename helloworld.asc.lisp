@@ -76,7 +76,7 @@
       nil
       (let ((receiver (first receivers)))
 	(let ((receiver-descriptor (find-component-descriptor receiver named-queues)))
-	  (let ((message-copy (copy-message-and-change-pin message :in)))
+	  (let ((message-copy (copy-message-and-change-pin message (port-tag receiver))))
 	    (enqueue-input-message message-copy receiver-descriptor))
           (route-message message (cdr receivers) named-queues)))))
 
@@ -176,19 +176,19 @@
                 (world1 (lambda (message)
                          (format *standard-output* "world1 gets ~a~%" message)
 			 (ecase (first message)
-			   (:in
+			   (:inw1
                             (format *standard-output* "world1~%")))))
                 (world2 (lambda (message)
                          (format *standard-output* "world2 gets ~a~%" message)
 			 (ecase (first message)
-			   (:in
+			   (:inw2
                             (format *standard-output* "world2~%")
                             (concluded))))))
             (let ((routing-table
                    (list ;; { sender (receivers) } 
                        (list '(:self :in) (list '(hello :in)))
-                       (list '(hello :out1) (list '(world1 :in)))
-                       (list '(hello :out2) (list '(world2 :in))))))
+                       (list '(hello :out1) (list '(world1 :inw1)))
+                       (list '(hello :out2) (list '(world2 :inw2))))))
               
               (setf named-queues (list ;; { name inq outq }
                                        (list :self self-handler nil nil)
