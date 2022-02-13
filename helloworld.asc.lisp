@@ -241,7 +241,7 @@
                        (ecase (message-tag message)
                          (:in
                           (format *standard-output* "world~%")
-                          (send-sync '(world result) 'eof message parts)))))
+                          (send-sync '(world result) 'the-end message parts)))))
               
               (self-handler (lambda (message)
                               ;(format *standard-output* ":self gets ~a~%" message)
