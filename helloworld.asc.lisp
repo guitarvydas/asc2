@@ -5,10 +5,10 @@
 ;; fifo front is (first q)
 ;; append is to end of q (last q) (fifo end)
 ;; (using symbol macros to avoid creating defsetfs)
-(defmacro name-field (x) `(first ,x))
-(defmacro handler-field (x) `(second ,x))
-(defmacro inq-field (x) `(third ,x))
-(defmacro outq-field (x) `(fourth ,x))
+(defmacro child-name-field (x) `(first ,x))
+(defmacro child-handler-field (x) `(second ,x))
+(defmacro child-inq-field (x) `(third ,x))
+(defmacro child-outq-field (x) `(fourth ,x))
 
 ;; routing descriptor has pair as the sender (component pin)
 (defmacro port-field (x) `(first ,x))
@@ -29,7 +29,7 @@
 (defun find-component-descriptor (target-port queues)
   (assert (not (null queues)))
   (let ((named-q (first queues)))
-    (let ((name (name-field named-q)))
+    (let ((name (child-name-field named-q)))
       (if (eq name (port-name target-port))
 	named-q
 	(find-component-descriptor target-port (cdr queues))))))
@@ -40,23 +40,23 @@
 
 
 (defun dequeue-input-message (named-q)
-  (let ((inq (inq-field named-q)))
+  (let ((inq (child-inq-field named-q)))
     (if inq
-        (pop (inq-field named-q))
+        (pop (child-inq-field named-q))
       nil)))
 
 (defun append-data-to-output-queue (named-q event)
-  (setf (outq-field named-q)
-        (if (null (outq-field named-q))
+  (setf (child-outq-field named-q)
+        (if (null (child-outq-field named-q))
             (list event)
-          (append (outq-field named-q) (list event)))))
+          (append (child-outq-field named-q) (list event)))))
 
 (defun enqueue-input-message (message receiver-descriptor)
-  ;; input queue is (inq-field receiver-descriptor)
-  (setf (inq-field receiver-descriptor)
-        (if (null (inq-field receiver-descriptor))
+  ;; input queue is (child-inq-field receiver-descriptor)
+  (setf (child-inq-field receiver-descriptor)
+        (if (null (child-inq-field receiver-descriptor))
             (list message)
-          (append (inq-field receiver-descriptor) (list message)))))
+          (append (child-inq-field receiver-descriptor) (list message)))))
 
         
 (defun find-from (sender-port table)
@@ -89,17 +89,17 @@
         (route-message message receiver-list named-queues)))))
 
 (defun route-per-sender (table named-q named-queues)
-  (let ((output-queue (outq-field named-q)))
+  (let ((output-queue (child-outq-field named-q)))
     (if (null output-queue)
         nil
-      (let ((output-message (pop (outq-field named-q))))
+      (let ((output-message (pop (child-outq-field named-q))))
         (route-message-to-all-receivers output-message table named-queues)))))
 
 (defun route-messages (table named-queues)
   (if (null named-queues)
       nil
     (let ((named-q (first named-queues)))
-      (let ((name (name-field named-q)))
+      (let ((name (child-name-field named-q)))
         (route-per-sender table named-q named-queues)
         (route-messages table (cdr named-queues))))))
   
@@ -110,7 +110,7 @@
      (when (funcall conclude?) (return))
      (let ((named-q (first queues)))
        (let ((message (dequeue-input-message named-q))
-             (handler (handler-field named-q)))
+             (handler (child-handler-field named-q)))
          (when message
            (funcall handler message)))
        (pop queues)))))
