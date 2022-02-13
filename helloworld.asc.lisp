@@ -3,9 +3,10 @@
 ;; in this POC, a part is a tuple {name message-handler input-q output-q vars}
 ;; fifo front is (first q)
 ;; append is to end of q (last q) (fifo end)
-;; (using symbol macros to avoid creating defsetfs)
-(defmacro part-name-field (x) `(first ,x))
-(defmacro part-handler-field (x) `(second ,x))
+
+;; (the only reason to use macros instead of functions is that macros can be used in setf (this probably argues for getters and setters (defsetf in Lisp)))
+(defmacro part-name (x) `(first ,x))
+(defmacro part-handler (x) `(second ,x))
 (defmacro part-inq (x) `(third ,x))
 (defmacro part-outq (x) `(fourth ,x))
 
@@ -28,7 +29,7 @@
 (defun find-component-descriptor (target-port queues)
   (assert (not (null queues)))
   (let ((part (first queues)))
-    (let ((name (part-name-field part)))
+    (let ((name (part-name part)))
       (if (eq name (port-component target-port))
 	part
 	(find-component-descriptor target-port (cdr queues))))))
@@ -98,7 +99,7 @@
   (if (null parts)
       nil
     (let ((part (first parts)))
-      (let ((name (part-name-field part)))
+      (let ((name (part-name part)))
         (route-per-sender table part parts)
         (route-messages table (cdr parts))))))
   
@@ -109,7 +110,7 @@
      (when (funcall conclude?) (return))
      (let ((part (first queues)))
        (let ((message (dequeue-input-message part))
-             (handler (part-handler-field part)))
+             (handler (part-handler part)))
          (when message
            (funcall handler message)))
        (pop queues)))))
