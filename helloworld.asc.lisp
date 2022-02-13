@@ -34,20 +34,22 @@
 (defmacro message-tag (m) `(port-tag (message-port ,m)))
 (defmacro new-message (port data trace kind) `(list ,port ,data ,trace ,kind))
 
-(defun find-component-descriptor (target-port queues)
+(defun find-part-descriptor (target-port queues)
   (assert (not (null queues)))
   (let ((part (first queues)))
     (let ((name (part-name part)))
       (if (eq name (port-component target-port))
 	part
-	(find-component-descriptor target-port (cdr queues))))))
+	(find-part-descriptor target-port (cdr queues))))))
 
 (defun sendk (port data cause queues kind)
-  (let ((part (find-component-descriptor port queues)))
+  (let ((part (find-part-descriptor port queues)))
     (append-data-to-output-queue part (new-message port data (list cause) kind))))
 
 (defun send (port data cause parts)
   (sendk port data cause parts :async))
+(defun send-sync (port data cause parts)
+  (sendk port data cause parts :sync))
 
 (defun dequeue-input-message (part)
   (let ((inq (part-inq part)))
@@ -86,7 +88,7 @@
   (if (null receivers)
       nil
       (let ((receiver (first receivers)))
-	(let ((receiver-descriptor (find-component-descriptor receiver parts)))
+	(let ((receiver-descriptor (find-part-descriptor receiver parts)))
 	  (let ((message-copy (copy-message-and-change-port message receiver)))
 	    (enqueue-input-message message-copy receiver-descriptor))
           (route-message message (cdr receivers) parts)))))
@@ -248,4 +250,3 @@
 	      (get-var '(:self result) parts))))))))
 
 (defun get-var (x y) (assert nil)) ;; niy
-(defun send-sync (w x y z) (assert nil)) ;; niy
