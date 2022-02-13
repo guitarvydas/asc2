@@ -42,10 +42,12 @@
 	part
 	(find-component-descriptor target-port (cdr queues))))))
 
-(defun send (port data cause queues)
+(defun sendk (port data cause queues kind)
   (let ((part (find-component-descriptor port queues)))
-    (append-data-to-output-queue part (new-message port data (list cause) :async))))
+    (append-data-to-output-queue part (new-message port data (list cause) kind))))
 
+(defun send (port data cause parts)
+  (sendk port data cause parts :async))
 
 (defun dequeue-input-message (part)
   (let ((inq (part-inq part)))
