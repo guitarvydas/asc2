@@ -3,8 +3,23 @@
 ;; fifo front is (first q)
 ;; append is to end of q (last q) (fifo end)
 
+;; in the future, all names will be strings, but we allow Lisp symbols, too, in this POC
+(defun namify (name)
+  (if (symbolp name)
+      name
+      (if (stringp name)
+	  name
+	  (assert nil))))
+
+(defun name-eq (name1 name2)
+  (if (symbolp name1)
+      (eq name1 name2)
+      (if (stringp name1)
+	  (string= name1 name2)
+	  (assert nil))))
+
 ;; (the only reason to use macros instead of functions is that macros can be used in setf (this probably argues for getters and setters (defsetf in Lisp)))
-(defmacro part-name (x) `(first ,x))
+(defmacro part-name (x) `(namify (first ,x)))
 (defmacro part-handler (x) `(second ,x))
 (defmacro part-inq (x) `(third ,x))
 (defmacro part-outq (x) `(fourth ,x))
@@ -14,16 +29,16 @@
 (defmacro connection-receivers (x) `(second ,x))
 
 ;; ports
-(defmacro port-component (p) `(first ,p))
-(defmacro port-tag (p) `(second ,p))
+(defmacro port-component (p) `(namify (first ,p)))
+(defmacro port-tag (p) `(namify (second ,p)))
 (defmacro input-port-component (p) `,(port-component p))
 (defmacro input-port-tag (p) `,(port-tag p))
 (defmacro output-port-component (p) `,(port-component p))
 (defmacro output-port-tag (p) `,(port-tag p))
 
 (defun same-port? (a b)
-  (and (eq (port-component a) (port-component b))
-       (eq (port-tag a) (port-tag b))))
+  (and (name-eq (port-component a) (port-component b))
+       (name-eq (port-tag a) (port-tag b))))
 
 ;; messages
 (defmacro message-kind (m) `(fourth ,m))
@@ -37,7 +52,7 @@
   (assert (not (null parts)))
   (let ((part (first parts)))
     (let ((name (part-name part)))
-      (if (eq name (port-component target-port))
+      (if (name-eq name (port-component target-port))
 	part
 	(find-part-descriptor target-port (cdr parts))))))
 

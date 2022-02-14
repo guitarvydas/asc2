@@ -11,7 +11,7 @@
 			 (ecase (message-tag message)
 			   (:in
                             (format *standard-output* "hello~%")
-                            (send '(hello :out) t message parts)))))
+                            (send '("hello" :out) t message parts)))))
                 (world (lambda (message)
                          (format *standard-output* "world gets ~a~%" message)
 			 (ecase (message-tag message)
@@ -20,13 +20,13 @@
                             (concluded))))))
             (let ((connections
                    (list ;; { sender (receivers) } 
-                       (list '(:self :in) (list '(hello :in)))
-                       (list '(hello :out) (list '(world :in))))))
+                       (list '(:self :in) (list '("hello" :in)))
+                       (list '("hello" :out) (list '("world" :in))))))
               
               (setf parts (list ;; { name inq outq }
                                        (list :self self-handler nil nil)
-                                       (list 'hello hello nil nil)
-                                       (list 'world world nil nil)))
+                                       (list "hello" hello nil nil)
+                                       (list "world" world nil nil)))
               (not-concluded)
               (send '(:self :in) t nil parts)
               (route-messages connections parts parts)
