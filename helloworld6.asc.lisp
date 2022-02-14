@@ -12,36 +12,35 @@
                        (ecase (message-tag message)
                          (:in
                           (format *standard-output* "hello~%")
-                          (send '(hello :out) t message parts)))))
+                          (send '("hello" :out) t message parts)))))
               
               (world (lambda (message)
                        ;(format *standard-output* "world gets ~a~%" message)
                        (ecase (message-tag message)
                          (:in
                           (format *standard-output* "world~%")
-                          (send-sync '(world result) 'the-end message parts)))))
+                          (send-sync '("world" "result") "c'est fini" message parts)))))
               
               (self-handler (lambda (message)
-                              ;(format *standard-output* ":self gets ~a~%" message)
-                              (case (message-tag message)
-                                (:in
+                              (format *standard-output* ":self gets ~a~%" message)
+			      (cond
+				((eq (message-tag message) :in)
                                  (default-container-handler message message parts))
-                                (result
+                                ((string= "result" (message-tag message))
                                  (setf result (message-data message))
-                                 (concluded))
-                                (otherwise (assert nil)))))
+                                 (concluded)))))
               
               )
           (let ((connections
                  (list ;; { sender (receivers) } 
-                       (list '(:self :in) (list '(hello :in)))
-                       (list '(hello :out) (list '(world :in)))
-                       (list '(world result) (list '(:self result)))
+                       (list '(:self :in) (list '("hello" :in)))
+                       (list '("hello" :out) (list '("world" :in)))
+                       (list '("world" "result") (list '(:self "result")))
                        )))
             (setf parts (list ;; { name inq outq }
                               (list :self self-handler nil nil)
-                              (list 'hello hello nil nil)
-                              (list 'world world nil nil)))
+                              (list "hello" hello nil nil)
+                              (list "world" world nil nil)))
             (not-concluded)
             (send '(:self :in) t nil parts)
             (route-messages connections parts parts)
